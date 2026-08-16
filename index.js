@@ -38,7 +38,7 @@ app.post('/dekho/user/login', login);
 //....................................
 // Video upload route
 const videoUploadRouter = require('./routes-controller/manage-video/video.upload');
-app.use('/dekho/video/upload', requireAuth, videoUploadRouter);
+app.use('/dekho/video/upload', videoUploadRouter);
 
 // Video edit route
 app.put('/dekho/video/edit', requireAuth, (req, res) => {

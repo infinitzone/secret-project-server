@@ -1,28 +1,303 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Document</title>
-
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Video Feed Test (YouTube‑like)</title>
     <style>
-        body {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            max-width: 650px;
+        * {
             margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Segoe UI', Roboto, Arial, sans-serif;
+            background: #0f0f0f;
+            color: #fff;
+            padding: 20px;
+        }
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 20px;
+            border-bottom: 1px solid #272727;
+            margin-bottom: 30px;
+        }
+        .logo {
+            font-size: 24px;
+            font-weight: bold;
+            color: #ff0000;
+        }
+        .logo span {
+            color: #fff;
+        }
+        .feed-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 24px;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        .video-card {
+            background: #1a1a1a;
+            border-radius: 12px;
+            overflow: hidden;
+            transition: transform 0.2s;
+            cursor: pointer;
+        }
+        .video-card:hover {
+            transform: scale(1.02);
+        }
+        .video-card .thumbnail {
+            width: 100%;
+            aspect-ratio: 16 / 9;
+            background: #2a2a2a;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            color: #aaa;
+            overflow: hidden;
+        }
+        .video-card .thumbnail img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        .video-card .info {
+            padding: 12px 16px;
+        }
+        .video-card .title {
+            font-size: 16px;
+            font-weight: 500;
+            line-height: 1.3;
+            margin-bottom: 6px;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+        .video-card .meta {
+            font-size: 13px;
+            color: #aaa;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        .video-card .meta span {
+            display: inline-flex;
+            align-items: center;
+        }
+        .load-more-container {
+            text-align: center;
+            margin: 40px 0;
+        }
+        .load-more-btn {
+            background: #272727;
+            border: none;
+            color: #fff;
+            padding: 12px 36px;
+            border-radius: 30px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .load-more-btn:hover {
+            background: #3a3a3a;
+        }
+        .load-more-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .error-message {
+            color: #ff6b6b;
+            text-align: center;
+            padding: 20px;
+            background: #2a0a0a;
+            border-radius: 8px;
+            margin: 20px auto;
+            max-width: 600px;
+        }
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #aaa;
+        }
+        .no-videos {
+            text-align: center;
+            padding: 60px 20px;
+            color: #aaa;
+            font-size: 18px;
         }
     </style>
 </head>
 <body>
-    
-    <video
-        controls
-        width="650px"
-        controlsList="nodownload"
-        disablePictureInPicture
-        src="http://127.0.0.1/dekho/video/watch/f055845c-82a1-47f9-9dc4-69541492bc71"
-    ></video>
+
+    <div class="header">
+        <div class="logo">▶ <span>Feed Test</span></div>
+        <div style="font-size:14px; color:#888;">YouTube‑like UI (testing only)</div>
+    </div>
+
+    <div class="feed-grid" id="feedGrid"></div>
+
+    <div class="load-more-container">
+        <button class="load-more-btn" id="loadMoreBtn">Load More</button>
+    </div>
+
+    <script>
+        // ---------- Configuration ----------
+        const API_BASE = '/video/fetch/feed';
+        const DEFAULT_LIMIT = 12;   // videos per page
+
+        // ---------- State ----------
+        let isLoading = false;
+        let nextCursor = null;
+        let hasMore = true;
+
+        // ---------- DOM refs ----------
+        const grid = document.getElementById('feedGrid');
+        const loadBtn = document.getElementById('loadMoreBtn');
+
+        // ---------- Helper: format view count ----------
+        function formatViews(views) {
+            if (views >= 1e6) return (views / 1e6).toFixed(1) + 'M';
+            if (views >= 1e3) return (views / 1e3).toFixed(1) + 'K';
+            return views.toString();
+        }
+
+        // ---------- Helper: relative time (rough) ----------
+        function timeAgo(dateStr) {
+            const now = new Date();
+            const then = new Date(dateStr);
+            const diff = (now - then) / 1000; // seconds
+            if (diff < 60) return 'Just now';
+            if (diff < 3600) return Math.floor(diff / 60) + 'm ago';
+            if (diff < 86400) return Math.floor(diff / 3600) + 'h ago';
+            if (diff < 2592000) return Math.floor(diff / 86400) + 'd ago';
+            if (diff < 31536000) return Math.floor(diff / 2592000) + 'mo ago';
+            return Math.floor(diff / 31536000) + 'y ago';
+        }
+
+        // ---------- Render a single video card ----------
+        function createVideoCard(video) {
+            const card = document.createElement('div');
+            card.className = 'video-card';
+
+            // Thumbnail (use placeholder if no thumbnail_path)
+            const thumb = "http://localhost" + video.thumbnail_path || '';
+            const thumbHTML = thumb ?
+                `<img src="${thumb}" alt="${video.title}" loading="lazy" />` :
+                `<span>🎬 No thumbnail</span>`;
+
+            card.innerHTML = `
+                <div class="thumbnail">${thumbHTML}</div>
+                <div class="info">
+                    <div class="title">${video.title || 'Untitled'}</div>
+                    <div class="meta">
+                        <span>👁️ ${formatViews(video.views || 0)} views</span>
+                        <span>⏱️ ${timeAgo(video.created_at)}</span>
+                        <span>📏 ${video.duration ? Math.floor(video.duration/60)+':'+String(video.duration%60).padStart(2,'0') : '--'}</span>
+                    </div>
+                    ${video.description ? `<div style="font-size:13px; color:#888; margin-top:6px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${video.description}</div>` : ''}
+                </div>
+            `;
+
+            // Optional: click to watch video (change URL to your watch page)
+            card.addEventListener('click', () => {
+                // Replace with your actual watch link
+                window.location.href = `http://localhost/watch/${video.id}`;
+            });
+
+            return card;
+        }
+
+        // ---------- Fetch and render a page ----------
+        async function fetchFeed(limit = DEFAULT_LIMIT, cursor = null) {
+            if (isLoading) return;
+            isLoading = true;
+            loadBtn.disabled = true;
+            loadBtn.textContent = 'Loading...';
+
+            try {
+                let url = `${API_BASE}?limit=${limit}`;
+                if (cursor) {
+                    url += `&cursor=${encodeURIComponent(cursor)}`;
+                }
+
+                const response = await fetch(url);
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({}));
+                    throw new Error(errorData.error || `HTTP ${response.status}`);
+                }
+
+                const data = await response.json();
+
+                // Update state
+                nextCursor = data.nextCursor || null;
+                hasMore = data.hasMore || false;
+
+                // Render videos
+                if (data.videos && data.videos.length > 0) {
+                    // Log for debugging
+                    console.log(data);
+
+                    data.videos.forEach(video => {
+                        const card = createVideoCard(video);
+                        grid.appendChild(card);
+                    });
+                } else {
+                    // No videos on first page? Show message
+                    if (!grid.children.length) {
+                        grid.innerHTML = `<div class="no-videos">No public videos available yet.</div>`;
+                    }
+                }
+
+                // Update load button
+                if (!hasMore) {
+                    loadBtn.textContent = 'No more videos';
+                    loadBtn.disabled = true;
+                } else {
+                    loadBtn.textContent = 'Load More';
+                    loadBtn.disabled = false;
+                }
+
+            } catch (err) {
+                console.error('Feed error:', err);
+                // Show error inside grid
+                const errorDiv = document.createElement('div');
+                errorDiv.className = 'error-message';
+                errorDiv.textContent = `⚠️ Failed to load feed: ${err.message}`;
+                grid.appendChild(errorDiv);
+                loadBtn.textContent = 'Retry';
+                loadBtn.disabled = false;
+            } finally {
+                isLoading = false;
+                if (hasMore) {
+                    loadBtn.disabled = false;
+                }
+            }
+        }
+
+        // ---------- Load next page ----------
+        function loadMore() {
+            if (!hasMore || isLoading) return;
+            fetchFeed(DEFAULT_LIMIT, nextCursor);
+        }
+
+        // ---------- Initial load ----------
+        fetchFeed(DEFAULT_LIMIT, null);
+
+        // ---------- Event listeners ----------
+        loadBtn.addEventListener('click', loadMore);
+
+        // Optional: infinite scroll
+        window.addEventListener('scroll', () => {
+            if (window.innerHeight + window.scrollY >= document.body.offsetHeight - 300) {
+                loadMore();
+            }
+        });
+    </script>
+
 </body>
 </html>

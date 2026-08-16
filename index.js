@@ -36,25 +36,27 @@ app.post('/dekho/user/login', login);
 //....................................
 //          Manage Video
 //....................................
-// Video upload route
 const videoUploadRouter = require('./routes-controller/manage-video/video.upload');
-app.use('/dekho/video/upload', videoUploadRouter);
 
-// Video edit route
-app.put('/dekho/video/edit', requireAuth, (req, res) => {
-  // Handle video edit logic here
+app.use('/video/upload', requireAuth, videoUploadRouter);
+app.put('/video/edit', requireAuth, (req, res) => {
   res.send('Video edited successfully!');
 });
-
-// Video delete route
-app.delete('/dekho/video/delete', requireAuth, (req, res) => {
-  // Handle video delete logic here
+app.delete('/video/delete', requireAuth, (req, res) => {
   res.send('Video deleted successfully!');
 });
 
-// Watch video route
+// ....................................
+//       Video Watch
+// ....................................
 const { streamVideo } = require('./routes-controller/manage-video/video.watch');
-app.get('/dekho/video/watch/:videoId', streamVideo);
+app.get('/watch/:videoId', streamVideo);
+
+// .....................................
+//       Video Feed
+// .....................................
+const feedRoutes = require('./routes-controller/feed/feed.routes');
+app.use('/video/fetch', feedRoutes);
 
 
 // Start the server

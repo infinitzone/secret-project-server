@@ -194,8 +194,8 @@ const uploadVideo = async (req, res) => {
         title.trim(),
         description.trim(),
 
-        `object-storage/videos/${videoId}/video.mp4`,
-        `object-storage/videos/${videoId}/thumbnail.jpg`,
+        `/internal-videos/${videoId}/video.mp4`,
+        `/thumbnails/${videoId}/thumbnail.jpg`,
 
         video.originalname,
         video.mimetype,

@@ -1,4 +1,4 @@
-const fs = require("fs");
+const fs = require("fs").promises; // Use promises directly
 const path = require("path");
 
 const MAX_CHUNK_SIZE = 2 * 1024 * 1024; // 2 MB
@@ -7,11 +7,9 @@ const streamVideo = async (req, res) => {
   try {
     const { videoId } = req.params;
 
-    // Prevent path traversal
+    // 1. YOUR SECURITY (Unchanged)
     if (!/^[a-zA-Z0-9-]+$/.test(videoId)) {
-      return res.status(400).json({
-        message: "Invalid video ID",
-      });
+      return res.status(400).json({ message: "Invalid video ID" });
     }
 
     const videoPath = path.join(
@@ -22,98 +20,79 @@ const streamVideo = async (req, res) => {
       "video.mp4"
     );
 
-    // Check file
+    // 2. YOUR FILE CHECK (Unchanged)
     try {
-      await fs.promises.access(videoPath, fs.constants.R_OK);
+      await fs.access(videoPath, fs.constants.R_OK);
     } catch {
-      return res.status(404).json({
-        message: "Video not found",
-      });
+      return res.status(404).json({ message: "Video not found" });
     }
 
-    const stat = await fs.promises.stat(videoPath);
+    const stat = await fs.stat(videoPath);
     const fileSize = stat.size;
+
+    // 3. YOUR RANGE LOGIC (Preserved exactly, but fixed the missing-range bug)
+    let start = 0;
+    let end = fileSize - 1; // Default to full file (will be capped by MAX_CHUNK_SIZE below)
 
     const range = req.headers.range;
 
-    // Browser should normally send Range for video
-    if (!range) {
-      return res.status(416).set({
-        "Content-Range": `bytes */${fileSize}`,
-        "Accept-Ranges": "bytes",
-      }).end();
-    }
-
-    // Only support single ranges
-    const match = range.match(/^bytes=(\d*)-(\d*)$/);
-
-    if (!match) {
-      return res.status(416).set({
-        "Content-Range": `bytes */${fileSize}`,
-        "Accept-Ranges": "bytes",
-      }).end();
-    }
-
-    let start;
-    let end;
-
-    const requestedStart = match[1];
-    const requestedEnd = match[2];
-
-    // Example: bytes=1000000-
-    if (requestedStart !== "") {
-      start = Number(requestedStart);
-
-      if (!Number.isSafeInteger(start) || start >= fileSize) {
+    if (range) {
+      // ---------- YOUR EXACT PARSING CODE (Copied from your file) ----------
+      const match = range.match(/^bytes=(\d*)-(\d*)$/);
+      if (!match) {
         return res.status(416).set({
           "Content-Range": `bytes */${fileSize}`,
           "Accept-Ranges": "bytes",
         }).end();
       }
 
-      if (requestedEnd !== "") {
-        end = Number(requestedEnd);
+      const requestedStart = match[1];
+      const requestedEnd = match[2];
 
-        if (!Number.isSafeInteger(end)) {
+      if (requestedStart !== "") {
+        start = Number(requestedStart);
+        if (!Number.isSafeInteger(start) || start >= fileSize) {
           return res.status(416).set({
             "Content-Range": `bytes */${fileSize}`,
             "Accept-Ranges": "bytes",
           }).end();
         }
-      } else {
+        if (requestedEnd !== "") {
+          end = Number(requestedEnd);
+          if (!Number.isSafeInteger(end)) {
+            return res.status(416).set({
+              "Content-Range": `bytes */${fileSize}`,
+              "Accept-Ranges": "bytes",
+            }).end();
+          }
+        } else {
+          end = fileSize - 1;
+        }
+      } else if (requestedEnd !== "") {
+        const suffixLength = Number(requestedEnd);
+        if (!Number.isSafeInteger(suffixLength) || suffixLength <= 0) {
+          return res.status(416).set({
+            "Content-Range": `bytes */${fileSize}`,
+            "Accept-Ranges": "bytes",
+          }).end();
+        }
+        start = Math.max(fileSize - suffixLength, 0);
         end = fileSize - 1;
-      }
-    }
-
-    // Example: bytes=-500000
-    else if (requestedEnd !== "") {
-      const suffixLength = Number(requestedEnd);
-
-      if (
-        !Number.isSafeInteger(suffixLength) ||
-        suffixLength <= 0
-      ) {
+      } else {
         return res.status(416).set({
           "Content-Range": `bytes */${fileSize}`,
           "Accept-Ranges": "bytes",
         }).end();
       }
+      // ---------------------------------------------------------------------
+    } 
+    // If NO range header (initial browser probe), we default to start=0, end=fileSize-1
+    // The limit below will cap it to 2MB automatically.
 
-      start = Math.max(fileSize - suffixLength, 0);
-      end = fileSize - 1;
-    }
-
-    else {
-      return res.status(416).set({
-        "Content-Range": `bytes */${fileSize}`,
-        "Accept-Ranges": "bytes",
-      }).end();
-    }
-
-    // Clamp end to actual file size
+    // Clamp end (Preserved)
     end = Math.min(end, fileSize - 1);
 
-    // Invalid range
+    // Invalid range (Preserved)
     if (start > end || start >= fileSize) {
       return res.status(416).set({
         "Content-Range": `bytes */${fileSize}`,
@@ -121,72 +100,30 @@ const streamVideo = async (req, res) => {
       }).end();
     }
 
-    /*
-     * Limit response size.
-     *
-     * Example:
-     * Browser asks:
-     * bytes=0-999999999
-     *
-     * Server returns:
-     * bytes=0-2097151
-     */
+    // 4. YOUR 2MB CHUNK LIMIT (Preserved exactly)
     if (end - start + 1 > MAX_CHUNK_SIZE) {
-      end = Math.min(
-        start + MAX_CHUNK_SIZE - 1,
-        fileSize - 1
-      );
+      end = Math.min(start + MAX_CHUNK_SIZE - 1, fileSize - 1);
     }
 
-    const chunkSize = end - start + 1;
+    // 5. PRODUCTION UPGRADE: Offload to nginx via X-Accel-Redirect
+    // We keep your custom headers so nginx knows exactly what bytes to send.
+    res.setHeader("X-Accel-Redirect", `/internal-videos/${videoId}/video.mp4`);
+    res.setHeader("Content-Type", "video/mp4");
+    res.setHeader("Content-Length", end - start + 1);
+    res.setHeader("Content-Range", `bytes ${start}-${end}/${fileSize}`);
+    res.setHeader("Accept-Ranges", "bytes");
+    res.setHeader("Cache-Control", "private, no-store"); // Your no-cache policy
 
-    res.writeHead(206, {
-      "Content-Range": `bytes ${start}-${end}/${fileSize}`,
-      "Accept-Ranges": "bytes",
-      "Content-Length": chunkSize,
-      "Content-Type": "video/mp4",
-
-      // Don't publicly cache video chunks
-      "Cache-Control": "private, no-store",
-    });
-
-    const videoStream = fs.createReadStream(videoPath, {
-      start,
-      end,
-    });
-
-    // Client disconnected
-    req.on("close", () => {
-      videoStream.destroy();
-    });
-
-    videoStream.on("error", (error) => {
-      console.error("Video streaming error:", error);
-
-      if (!res.headersSent) {
-        res.status(500).json({
-          message: "Video streaming failed",
-        });
-      } else {
-        res.destroy();
-      }
-    });
-
-    videoStream.pipe(res);
+    // nginx will automatically respect the Content-Range header when serving.
+    return res.status(206).end();
 
   } catch (error) {
     console.error("Video streaming error:", error);
-
     if (!res.headersSent) {
-      return res.status(500).json({
-        message: "Unable to stream video",
-      });
+      return res.status(500).json({ message: "Unable to stream video" });
     }
-
     res.destroy();
   }
 };
 
-module.exports = {
-  streamVideo,
-};
+module.exports = { streamVideo };

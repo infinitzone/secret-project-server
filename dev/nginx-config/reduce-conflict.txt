@@ -1,0 +1,8 @@
+# Check if the default site is enabled
+ls -l /etc/nginx/sites-enabled/
+
+# Disable it
+sudo rm /etc/nginx/sites-enabled/default
+
+# or if it is a file in conf.d
+sudo mv /etc/nginx/conf.d/default.conf /etc/nginx/conf.d/default.conf.disabled

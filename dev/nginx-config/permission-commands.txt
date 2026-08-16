@@ -1,0 +1,23 @@
+# Create a group
+sudo groupadd videostorage
+
+# Add both users to it
+sudo usermod -aG videostorage hridoy
+sudo usermod -aG videostorage www-data
+
+# Apply group ownership
+sudo chown -R hridoy:videostorage /home/hridoy/Secret_Project/server/object-storage
+
+# Directories: owner rwx, group r-x, others ---
+sudo find /home/hridoy/Secret_Project/server/object-storage -type d -exec chmod 750 {} \;
+# Files: owner rw-, group r--, others ---
+sudo find /home/hridoy/Secret_Project/server/object-storage -type f -exec chmod 640 {} \;
+
+# Make sure new files inherit the group
+sudo chmod g+s /home/hridoy/Secret_Project/server/object-storage
+sudo find /home/hridoy/Secret_Project/server/object-storage -type d -exec chmod g+s {} \;
+
+
+sudo chmod 755 /home/hridoy
+sudo chmod 755 /home/hridoy/Secret_Project
+sudo chmod 755 /home/hridoy/Secret_Project/server

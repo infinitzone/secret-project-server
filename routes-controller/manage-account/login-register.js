@@ -1,9 +1,11 @@
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
+require("dotenv").config();
 
 // Adjust this path to wherever your SQLite connection is located
 const connectDB = require("../../database/db");
+const logger = require("../../logger");
 
 const SALT_ROUNDS = 12;
 
@@ -117,7 +119,7 @@ const register = async (req, res) => {
     });
 
   } catch (error) {
-    console.error("Register error:", error);
+    logger.error("Register error:", error);
 
     return res.status(500).json({
       message: "Registration failed",
@@ -182,7 +184,7 @@ const login = async (req, res) => {
     });
 
   } catch (error) {
-    console.error("Login error:", error);
+    logger.error("Login error:", error);
 
     return res.status(500).json({
       message: "Login failed",

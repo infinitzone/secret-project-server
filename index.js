@@ -1,5 +1,8 @@
 const express = require('express');
 const cors = require('cors');
+const swaggerJsdoc = require("swagger-jsdoc");
+const swaggerUi = require("swagger-ui-express");
+const path = require("path");
 require("dotenv").config();
 
 
@@ -11,7 +14,6 @@ const PORT = process.env.PORT || 3000;
 app.use(cors())
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-
 
 // Middleware
 const requireAuth = require('./middleware/requireAuth');
@@ -30,8 +32,8 @@ app.get('/', (req, res) => {
 //...................................
 // User registration route
 const {login, register} = require('./routes-controller/manage-account/login-register');
-app.post('/dekho/user/register', register);
-app.post('/dekho/user/login', login);
+app.post('/user/register', register);
+app.post('/user/login', login);
 
 //....................................
 //          Manage Video
@@ -56,8 +58,25 @@ app.get('/watch/:videoId', streamVideo);
 //       Video Feed
 // .....................................
 const feedRoutes = require('./routes-controller/feed/feed.routes');
+const { env } = require('process');
 app.use('/video/fetch', feedRoutes);
 
+
+const swaggerSpec = swaggerJsdoc({
+  definition: {
+    openapi: "3.0.0",
+    info: {
+      title: "API",
+      version: "1.0.0",
+      description: `Documentation for ${process.env.APP_NAME}`,
+    },
+  },
+
+  apis: [
+    path.join(__dirname, "routes-controller/**/*.js"),
+  ],
+});
+app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
 // Start the server
 app.listen(PORT, () => {

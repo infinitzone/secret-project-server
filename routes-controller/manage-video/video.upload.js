@@ -273,7 +273,117 @@ const uploadVideo = async (req, res) => {
 // ========================
 // Route
 // ========================
-
+/**
+ * @swagger
+ * /video/upload:
+ *   post:
+ *     summary: Upload a video
+ *     description: Upload an MP4 video with a thumbnail and associated metadata.
+ *     tags:
+ *       - Manage video
+ *     security:
+ *       - bearerAuth: []
+ *
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - video
+ *               - thumbnail
+ *               - title
+ *               - description
+ *               - visibility
+ *               - category
+ *             properties:
+ *               video:
+ *                 type: string
+ *                 format: binary
+ *                 description: MP4 video file.
+ *
+ *               thumbnail:
+ *                 type: string
+ *                 format: binary
+ *                 description: Thumbnail image. Supported formats are JPEG, PNG, and WebP.
+ *
+ *               title:
+ *                 type: string
+ *                 example: My First Video
+ *
+ *               description:
+ *                 type: string
+ *                 example: This is my first uploaded video.
+ *
+ *               visibility:
+ *                 type: string
+ *                 enum:
+ *                   - public
+ *                   - private
+ *                 example: public
+ *
+ *               category:
+ *                 type: string
+ *                 example: technology,programming
+ *                 description: Comma-separated category names.
+ *
+ *     responses:
+ *       201:
+ *         description: Video uploaded successfully.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Video uploaded successfully
+ *                 video:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: string
+ *                       format: uuid
+ *                     user_id:
+ *                       type: string
+ *                     title:
+ *                       type: string
+ *                     description:
+ *                       type: string
+ *                     category:
+ *                       type: string
+ *                     videoPath:
+ *                       type: string
+ *                     thumbnailPath:
+ *                       type: string
+ *                     duration:
+ *                       type: number
+ *                       nullable: true
+ *                     width:
+ *                       type: integer
+ *                       nullable: true
+ *                     height:
+ *                       type: integer
+ *                       nullable: true
+ *                     status:
+ *                       type: string
+ *                       example: processing
+ *                     visibility:
+ *                       type: string
+ *                       enum:
+ *                         - public
+ *                         - private
+ *
+ *       400:
+ *         description: Invalid request or missing required field.
+ *
+ *       401:
+ *         description: Authentication required.
+ *
+ *       500:
+ *         description: Video upload failed.
+ */
 Router.post(
   "/",
   requireAuth,

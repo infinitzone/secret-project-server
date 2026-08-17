@@ -1,6 +1,69 @@
 const fs = require("fs").promises;
 const path = require("path");
 
+/**
+ * @swagger
+ * /watch/{videoId}:
+ *   get:
+ *     summary: Watch a video
+ *     description: |
+ *       Validates the video ID and serves the requested MP4 video.
+ *       The actual video bytes are served internally by Nginx.
+ *     tags:
+ *       - Watch video
+ *
+ *     parameters:
+ *       - name: videoId
+ *         in: path
+ *         required: true
+ *         description: Unique ID of the video.
+ *         schema:
+ *           type: string
+ *           pattern: '^[a-zA-Z0-9-]+$'
+ *         example: 8839720d-ec43-4be6-bf04-4784050367e5
+ *
+ *     responses:
+ *       200:
+ *         description: Video is available for streaming.
+ *         content:
+ *           video/mp4:
+ *             schema:
+ *               type: string
+ *               format: binary
+ *
+ *       400:
+ *         description: Invalid video ID.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Invalid video ID
+ *
+ *       404:
+ *         description: Video not found.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Video not found
+ *
+ *       500:
+ *         description: Unable to stream video.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Unable to stream video
+ */
 const streamVideo = async (req, res) => {
   try {
     const { videoId } = req.params;

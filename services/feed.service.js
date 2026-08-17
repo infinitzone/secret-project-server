@@ -1,39 +1,77 @@
 const feedRepository = require('../repositories/feed.repository');
+const { rankVideos } = require('./ranking');
 
-/**
- * Ranking function – currently a no‑op (chronological order).
- * In the future, replace this with personalised ranking.
- *
- * @param {Array} videos - raw video rows
- * @param {Object|null} user - user context (interests, history, etc.)
- * @returns {Array} ranked videos
- */
-const rankVideos = (videos, user) => {
-  // For now: keep the order from the database (created_at DESC, id DESC)
-  return videos;
+// ---------- Dummy user‑interest fetcher (replace with real DB) ----------
+const getUserInterests = async (userId) => {
+  if (!userId) return null;
+
+  // Simulate fetching from a user_interests table.
+  // For now, return dummy categories for user 123.
+  // In production, query: SELECT categories, subscribed_users FROM user_preferences WHERE user_id = ?
+  // Categories are stored as comma-separated strings, or you can store as JSON.
+  const dummyData = {
+    123: {
+      categories: ['science', 'technology', 'programming'],
+      subscribedUsers: [101, 102]
+    }
+  };
+  return dummyData[userId] || null;
 };
 
 /**
- * Get a paginated feed of public, ready videos.
- * 
- * @param {Object} params
- * @param {number} params.limit - page size (must be integer, 1-50)
- * @param {Object|null} params.cursor - { created_at, id } or null
- * @param {number|null} params.userId - optional for future personalisation
- * @returns {Promise<{ videos: Array, nextCursor: string|null, hasMore: boolean }>}
+ * Personalisation hook – decides filters and ordering based on user.
+ *
+ * @param {number|null} userId
+ * @returns {Promise<{ filters: Object, orderBy: string }>}
+ */
+const applyPersonalization = async (userId) => {
+  // Default: no filters, chronological order
+  let filters = {};
+  let orderBy = 'created_at DESC, id DESC';
+
+  if (userId) {
+    const interests = await getUserInterests(userId);
+    if (interests && (interests.categories?.length || interests.subscribedUsers?.length)) {
+      // If user has interests, apply filters
+      if (interests.categories?.length) {
+        filters.categories = interests.categories;
+      }
+      if (interests.subscribedUsers?.length) {
+        filters.subscribedUsers = interests.subscribedUsers;
+      }
+      // Optionally, you can also order by a personalised score (SQL computed)
+      // orderBy = 'score DESC';  // if you want trending within interests
+    } else {
+      // User exists but has no interests → show trending (most scored)
+      orderBy = 'score DESC';
+    }
+  } else {
+    // No user (not logged in) → show trending
+    orderBy = 'score DESC';
+  }
+
+  return { filters, orderBy };
+};
+
+/**
+ * Get a paginated feed.
  */
 const getFeed = async ({ limit, cursor, userId }) => {
-  // Extra safety: clamp limit to [1, 50] in case controller missed it
-  let safeLimit = Math.min(Math.max(parseInt(limit, 10) || 20, 1), 50);
-  // If controller already validated, this is a double-check.
-
-  // Fetch one extra record to detect if there's a next page
+  const safeLimit = Math.min(Math.max(parseInt(limit, 10) || 20, 1), 50);
   const fetchLimit = safeLimit + 1;
-  const rows = await feedRepository.getFeedCandidates({ 
-    limit: fetchLimit, 
-    cursor 
+
+  // 1. Personalise the query (fetch user interests & set filters/order)
+  const { filters, orderBy } = await applyPersonalization(userId);
+
+  // 2. Fetch candidates from repository
+  const rows = await feedRepository.getFeedCandidates({
+    limit: fetchLimit,
+    cursor,
+    filters,
+    orderBy
   });
 
+  // 3. Determine hasMore and slice
   let hasMore = false;
   let videos = rows;
   if (rows.length > safeLimit) {
@@ -41,10 +79,12 @@ const getFeed = async ({ limit, cursor, userId }) => {
     videos = rows.slice(0, safeLimit);
   }
 
-  // Apply ranking (currently no‑op)
-  const ranked = rankVideos(videos, userId);
+  // 4. Optional: apply advanced ranking (post‑fetch)
+  //    Currently a no‑op; you can later add ML scoring, diversifying, etc.
+  const user = userId ? { id: userId } : null;
+  const ranked = rankVideos(videos, user);
 
-  // Generate cursor for next page (if any)
+  // 5. Generate next cursor (based on the last video after ranking)
   let nextCursor = null;
   if (hasMore && ranked.length > 0) {
     const last = ranked[ranked.length - 1];

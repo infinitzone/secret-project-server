@@ -1,4 +1,5 @@
 const feedService = require('../../services/feed.service');
+const jwt = require('jsonwebtoken');
 
 /**
  * GET /dekho/video/feed
@@ -30,8 +31,23 @@ const getFeed = async (req, res) => {
       }
     }
 
-    // 3. (Optional) Get current user from JWT/session – for future personalisation
-    const userId = null;
+    // 3. Optionally extract userId from JWT (if present and valid)
+    let userId = null;
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.split(' ')[1];
+      try {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        if (decoded && decoded.userId) {
+          userId = decoded.userId;
+          // Optionally, you could verify that this user still exists in DB
+          // but that's extra cost; we assume token is valid.
+        }
+      } catch (err) {
+        // Token invalid/expired – silently ignore, treat as anonymous
+        // (do NOT log the error to avoid noise)
+      }
+    }
 
     // 4. Call service
     const result = await feedService.getFeed({ limit, cursor, userId });

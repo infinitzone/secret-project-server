@@ -14,6 +14,8 @@ const router = express.Router();
  *       Videos may be ordered chronologically or by trending score.
  *     tags:
  *       - Fetch videos
+ *     security:
+ *       - bearerAuth: [] 
  *
  *     parameters:
  *       - name: limit

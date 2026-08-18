@@ -56,6 +56,7 @@ const buildFeedQuery = ({ limit, cursor, filters = {}, orderBy = 'created_at DES
   sql += ` ORDER BY ${orderBy} LIMIT ?`;
   params.push(limit);
 
+
   return { sql, params };
 };
 

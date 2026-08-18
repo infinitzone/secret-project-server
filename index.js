@@ -39,23 +39,28 @@ app.post('/user/login', login);
 //          Manage Video
 //....................................
 const videoUploadRouter = require('./routes-controller/manage-video/video.upload');
+const videoEditRouter = require('./routes-controller/manage-video/video.edit');
+const videoDeleteRouter = require('./routes-controller/manage-video/video.delete');
 
-app.use('/video/upload', requireAuth, videoUploadRouter);
-app.put('/video/edit', requireAuth, (req, res) => {
-  res.send('Video edited successfully!');
-});
-app.delete('/video/delete', requireAuth, (req, res) => {
-  res.send('Video deleted successfully!');
-});
+app.use('/video/upload', videoUploadRouter);
+app.use('/video/edit', videoEditRouter);
+app.use('/video/delete', videoDeleteRouter);
+
+//....................................
+//            Video Activity
+//....................................
+const activityRoutes = require("./routes-controller/video-activity/activity.routes");
+
+app.use("/video/activity", activityRoutes);
 
 // ....................................
-//       Video Watch
+//            Video Watch
 // ....................................
 const { streamVideo } = require('./routes-controller/manage-video/video.watch');
 app.get('/watch/:videoId', streamVideo);
 
 // .....................................
-//       Video Feed
+//             Video Feed
 // .....................................
 const feedRoutes = require('./routes-controller/feed/feed.routes');
 const { env } = require('process');
@@ -69,6 +74,15 @@ const swaggerSpec = swaggerJsdoc({
       title: "API",
       version: "1.0.0",
       description: `Documentation for ${process.env.APP_NAME}`,
+    },
+    components: {
+      securitySchemes: {
+        bearerAuth: {
+          type: "http",
+          scheme: "bearer",
+          bearerFormat: "JWT",
+        },
+      },
     },
   },
 

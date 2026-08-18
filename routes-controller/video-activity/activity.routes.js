@@ -5,7 +5,6 @@ const requireAuth = require("../../middleware/requireAuth");
 
 const {
     likeVideo,
-    unlikeVideo,
     addComment,
     deleteComment,
     viewVideo
@@ -16,8 +15,11 @@ const {
  * @swagger
  * /video/activity/like:
  *   post:
- *     summary: Like a video
- *     description: Like a video as the authenticated user. A user can like a video only once.
+ *     summary: Toggle like on a video
+ *     description: |
+ *       If the user has not liked the video, a like is added.
+ *       If the user already liked it, the like is removed (unlike).
+ *       This acts as a toggle – one endpoint handles both actions.
  *     tags:
  *       - Video activity
  *     security:
@@ -35,7 +37,7 @@ const {
  *               videoId:
  *                 type: string
  *                 format: uuid
- *                 description: ID of the video to like.
+ *                 description: ID of the video to like/unlike.
  *                 example: "550e8400-e29b-41d4-a716-446655440000"
  *
  *     responses:
@@ -50,53 +52,8 @@ const {
  *                   type: string
  *                   example: Video liked successfully
  *
- *       400:
- *         description: Invalid videoId.
- *
- *       401:
- *         description: Authentication required.
- *
- *       404:
- *         description: Video not found.
- *
- *       409:
- *         description: Video is already liked by this user.
- *
- *       500:
- *         description: Internal server error.
- */
-Router.post("/like", requireAuth, likeVideo);
-
-
-/**
- * @swagger
- * /video/activity/like:
- *   delete:
- *     summary: Unlike a video
- *     description: Remove the authenticated user's like from a video.
- *     tags:
- *       - Video activity
- *     security:
- *       - bearerAuth: []
- *
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - videoId
- *             properties:
- *               videoId:
- *                 type: string
- *                 format: uuid
- *                 description: ID of the video to unlike.
- *                 example: "550e8400-e29b-41d4-a716-446655440000"
- *
- *     responses:
  *       200:
- *         description: Video unliked successfully.
+ *         description: Video unliked successfully (like was removed).
  *         content:
  *           application/json:
  *             schema:
@@ -113,12 +70,12 @@ Router.post("/like", requireAuth, likeVideo);
  *         description: Authentication required.
  *
  *       404:
- *         description: Like not found.
+ *         description: Video not found.
  *
  *       500:
  *         description: Internal server error.
  */
-Router.delete("/like", requireAuth, unlikeVideo);
+Router.post("/like", requireAuth, likeVideo);
 
 
 /**

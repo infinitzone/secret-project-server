@@ -31,7 +31,7 @@ const getFeed = async (req, res) => {
     }
 
     // 3. (Optional) Get current user from JWT/session – for future personalisation
-    const userId = null; // req.user?.id
+    const userId = null;
 
     // 4. Call service
     const result = await feedService.getFeed({ limit, cursor, userId });

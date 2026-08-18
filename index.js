@@ -69,6 +69,12 @@ const feedRoutes = require('./routes-controller/feed/feed.routes');
 const { env } = require('process');
 app.use('/video/fetch', feedRoutes);
 
+//.....................................
+//             Video Search
+//.....................................
+const searchRoutes = require("./routes-controller/search/search.routes");
+app.use("/video/search", searchRoutes);  // mounts at /video/search
+
 
 const swaggerSpec = swaggerJsdoc({
   definition: {

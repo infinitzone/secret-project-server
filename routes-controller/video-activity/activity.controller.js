@@ -252,10 +252,118 @@ const viewVideo = async (req, res) => {
   }
 };
 
+// ======================================================
+// SUBSCRIBE / UNSUBSCRIBE TO CREATOR
+// ======================================================
+const subscribeUser = async (req, res) => {
+  try {
+    const { userId: creatorId } = req.body;
+    const subscriberId = req.user.id;
+
+    if (!Number.isInteger(Number(creatorId))) {
+      return res.status(400).json({
+        error: "Valid userId is required",
+      });
+    }
+
+    const targetUserId = Number(creatorId);
+
+    // Prevent subscribing to yourself
+    if (subscriberId === targetUserId) {
+      return res.status(400).json({
+        error: "You cannot subscribe to yourself",
+      });
+    }
+
+    const db = await connectDB();
+
+    await db.run("BEGIN TRANSACTION");
+
+    try {
+      // Make sure creator exists
+      const creator = await db.get(
+        `SELECT id FROM users WHERE id = ?`,
+        [targetUserId]
+      );
+
+      if (!creator) {
+        await db.run("ROLLBACK");
+
+        return res.status(404).json({
+          error: "User not found",
+        });
+      }
+
+      // Try to subscribe
+      const result = await db.run(
+        `INSERT OR IGNORE INTO user_subscriptions
+         (subscriber_id, subscribed_to_id)
+         VALUES (?, ?)`,
+        [subscriberId, targetUserId]
+      );
+
+      if (result.changes === 1) {
+        // New subscription
+        await db.run(
+          `UPDATE users
+           SET sub_count = sub_count + 1
+           WHERE id = ?`,
+          [targetUserId]
+        );
+
+        await db.run("COMMIT");
+
+        return res.status(201).json({
+          message: "Subscribed successfully",
+          subscribed: true,
+        });
+      }
+
+      // Already subscribed → unsubscribe
+      const deleteResult = await db.run(
+        `DELETE FROM user_subscriptions
+         WHERE subscriber_id = ?
+           AND subscribed_to_id = ?`,
+        [subscriberId, targetUserId]
+      );
+
+      if (deleteResult.changes === 1) {
+        await db.run(
+          `UPDATE users
+           SET sub_count = MAX(sub_count - 1, 0)
+           WHERE id = ?`,
+          [targetUserId]
+        );
+      }
+
+      await db.run("COMMIT");
+
+      return res.status(200).json({
+        message: "Unsubscribed successfully",
+        subscribed: false,
+      });
+
+    } catch (error) {
+      await db.run("ROLLBACK");
+      throw error;
+    }
+
+  } catch (error) {
+    logger.error(
+      `Unexpected error toggling subscription: ${error.message}`
+    );
+
+    return res.status(500).json({
+      error: "Internal server error",
+    });
+  }
+};
+
 
 module.exports = {
-  likeVideo,      // now toggles
+  likeVideo,  
   addComment,
   deleteComment,
   viewVideo,
+  subscribeUser,
 };

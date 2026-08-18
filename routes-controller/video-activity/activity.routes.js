@@ -7,7 +7,8 @@ const {
     likeVideo,
     addComment,
     deleteComment,
-    viewVideo
+    viewVideo,
+    subscribeUser
 } = require("./activity.controller");
 
 
@@ -253,6 +254,77 @@ Router.delete("/comment", requireAuth, deleteComment);
  *         description: Internal server error.
  */
 Router.post("/view", requireAuth, viewVideo);
+
+/**
+ * @swagger
+ * /video/activity/subscribe:
+ *   post:
+ *     summary: Subscribe or unsubscribe from a user
+ *     description: |
+ *       Toggles the authenticated user's subscription to another user.
+ *       If not subscribed, the user is subscribed.
+ *       If already subscribed, the subscription is removed.
+ *     tags:
+ *       - User subscription
+ *     security:
+ *       - bearerAuth: []
+ *
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - userId
+ *             properties:
+ *               userId:
+ *                 type: integer
+ *                 description: ID of the creator/user to subscribe to.
+ *                 example: 25
+ *
+ *     responses:
+ *       201:
+ *         description: Subscription created successfully.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Subscribed successfully
+ *                 subscribed:
+ *                   type: boolean
+ *                   example: true
+ *
+ *       200:
+ *         description: Subscription removed successfully.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Unsubscribed successfully
+ *                 subscribed:
+ *                   type: boolean
+ *                   example: false
+ *
+ *       400:
+ *         description: Invalid user ID or attempting to subscribe to yourself.
+ *
+ *       401:
+ *         description: Authentication required.
+ *
+ *       404:
+ *         description: User not found.
+ *
+ *       500:
+ *         description: Internal server error.
+ */
+Router.post("/subscribe", requireAuth, subscribeUser);
 
 
 module.exports = Router;

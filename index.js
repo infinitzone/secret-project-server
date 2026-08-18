@@ -32,6 +32,9 @@ app.get('/', (req, res) => {
 //...................................
 // User registration route
 const {login, register} = require('./routes-controller/manage-account/login-register');
+const getUser = require("./routes-controller/user/user.routes");
+
+app.use("/user", getUser);
 app.post('/user/register', register);
 app.post('/user/login', login);
 

@@ -59,11 +59,12 @@ const searchVideos = async (req, res) => {
     const whereCondition = whereClauses.join(" AND ");
     const scoreExpression = scoreClauses.join(" + ");
 
+
     let subscriptionBoost = "";
     let boostParam = [];
     if (user) {
-      subscriptionBoost = `+ (SELECT 2 FROM user_subscriptions 
-                             WHERE subscriber_id = ? AND subscribed_to_id = v.user_id)`;
+      subscriptionBoost = `+ COALESCE((SELECT 2 FROM user_subscriptions 
+                             WHERE subscriber_id = ? AND subscribed_to_id = v.user_id), 0)`;
       boostParam = [user.id];
     }
 
@@ -79,20 +80,20 @@ const searchVideos = async (req, res) => {
     params.push(...whereParams);
 
     const ctePart = `
-      WITH ranked AS (
-        SELECT
-          v.id, v.user_id, v.title, v.description, v.video_path, v.thumbnail_path,
-          v.mime_type, v.file_size, v.duration, v.width, v.height,
-          v.views, v.likes_count, v.created_at, v.category,
-          u.username, u.display_name, u.avatar_path,
-          ${relevanceExpr} AS relevance
-        FROM videos v
-        LEFT JOIN users u ON u.id = v.user_id
-        WHERE v.status = 'processing'
-          AND v.visibility = 'public'
-          AND (${whereCondition})
-      )
-    `;
+          WITH ranked AS (
+            SELECT
+              v.id, v.user_id, v.title, v.description, v.video_path, v.thumbnail_path,
+              v.mime_type, v.file_size, v.duration, v.width, v.height,
+              v.views_count, v.likes_count, v.comments_count, v.created_at, v.category,
+              u.username, u.display_name, u.avatar_path,
+              ${relevanceExpr} AS relevance
+            FROM videos v
+            LEFT JOIN users u ON u.id = v.user_id
+            WHERE v.status IN ('ready', 'processing')
+              AND v.visibility = 'public'
+              AND (${whereCondition})
+          )
+        `;
 
     if (cursor) {
       sql = `

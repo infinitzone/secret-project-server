@@ -12,8 +12,27 @@ const PORT = process.env.PORT || 3000;
 
 // Inbuilt middleware
 app.use(cors())
-app.use(express.json());
+app.use(express.json({
+  verify: (req, res, buf) => {
+    try {
+      JSON.parse(buf);
+    } catch (e) {
+      // Malformed JSON – store error on the request so we can handle it later
+      req.jsonParseError = e;
+    }
+  }
+}));
 app.use(express.urlencoded({ extended: true }));
+
+// If a JSON parse error occurred, respond immediately and stop further processing
+app.use((err, req, res, next) => {
+  if (req.jsonParseError) {
+    return res.status(400).json({
+      error: 'Invalid JSON payload. Please ensure your request body is valid JSON.'
+    });
+  }
+  next();
+});
 
 // Middleware
 const requireAuth = require('./middleware/requireAuth');

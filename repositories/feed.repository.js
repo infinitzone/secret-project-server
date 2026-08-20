@@ -17,22 +17,19 @@ const buildFeedQuery = ({ limit, cursor, filters = {}, orderBy = 'created_at DES
       v.video_path, v.thumbnail_path,
       v.mime_type, v.file_size,
       v.duration, v.width, v.height,
-      v.views, v.likes_count,
+      v.views_count, v.likes_count, v.comments_count,
       v.created_at,
       -- Compute a trending score (used when orderBy = 'score DESC')
-      (v.likes_count * 2.0 + v.views * 0.5) / (julianday('now') - julianday(v.created_at) + 1.0) AS score
+      (v.likes_count * 2.0 + v.views_count * 0.5) / (julianday('now') - julianday(v.created_at) + 1.0) AS score
     FROM videos v
-    WHERE v.status = 'processing'
+    WHERE v.status IN ('ready', 'processing')
       AND v.visibility = 'public'
   `;
 
   const params = [];
 
-  // ---------- Category filter (multiple, comma‑separated in DB) ----------
+  // ---------- Category filter ----------
   if (filters.categories && filters.categories.length) {
-    // Use token matching: ensure the category appears as a whole token.
-    // Example: category = "science,technology,programming"
-    // To match "technology", we check if ",technology," is inside ",science,technology,programming,"
     const categoryConditions = filters.categories.map(() => 
       `(',' || v.category || ',' LIKE '%,' || ? || ',%')`
     );
@@ -40,7 +37,7 @@ const buildFeedQuery = ({ limit, cursor, filters = {}, orderBy = 'created_at DES
     params.push(...filters.categories);
   }
 
-  // ---------- Subscription filter (videos from followed users) ----------
+  // ---------- Subscription filter ----------
   if (filters.subscribedUsers && filters.subscribedUsers.length) {
     sql += ` AND v.user_id IN (${filters.subscribedUsers.map(() => '?').join(',')})`;
     params.push(...filters.subscribedUsers);
@@ -56,10 +53,8 @@ const buildFeedQuery = ({ limit, cursor, filters = {}, orderBy = 'created_at DES
   sql += ` ORDER BY ${orderBy} LIMIT ?`;
   params.push(limit);
 
-
   return { sql, params };
 };
-
 /**
  * Fetch feed candidates with flexible filters and ordering.
  *

@@ -7,7 +7,15 @@ const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12
 
 const isValidUUID = (id) => typeof id === "string" && UUID_REGEX.test(id);
 
-// Record user interest – can be offloaded to a queue later
+// Robust check for SQLite Foreign Key violations across driver variations
+const isForeignKeyError = (error) => {
+  return (
+    error.code === "SQLITE_CONSTRAINT_FOREIGNKEY" ||
+    (error.code === "SQLITE_CONSTRAINT" && error.message && error.message.includes("FOREIGN KEY"))
+  );
+};
+
+// Record user interest log inside the active transaction
 const saveUserInterest = async (db, userId, videoId, activityType) => {
   await db.run(
     `INSERT INTO user_interest (user_id, video_id, activity_type)
@@ -32,43 +40,46 @@ const likeVideo = async (req, res) => {
     await db.run("BEGIN TRANSACTION");
 
     try {
-      // Try to insert the like – if it already exists, ignore
+      // 1. Try inserting the like into video_likes
       const insertResult = await db.run(
         `INSERT OR IGNORE INTO video_likes (video_id, user_id) VALUES (?, ?)`,
         [videoId, userId]
       );
 
       if (insertResult.changes === 1) {
-        // New like – increment counter
-        await db.run(
-          `INSERT INTO video_activity (video_id, likes_count)
-           VALUES (?, 1)
-           ON CONFLICT(video_id) DO UPDATE SET likes_count = likes_count + 1`,
+        // 2a. New like – increment likes_count on the videos table
+        const updateResult = await db.run(
+          `UPDATE videos SET likes_count = likes_count + 1 WHERE id = ?`,
           [videoId]
         );
+
+        if (updateResult.changes === 0) {
+          throw new Error("VIDEO_NOT_FOUND");
+        }
+
         await saveUserInterest(db, userId, videoId, "like");
         await db.run("COMMIT");
         return res.status(201).json({ message: "Video liked successfully" });
       } else {
-        // Already liked – remove the like (unlike)
+        // 2b. Already liked – remove like and decrement likes_count
         await db.run(
           `DELETE FROM video_likes WHERE video_id = ? AND user_id = ?`,
           [videoId, userId]
         );
+
         await db.run(
-          `UPDATE video_activity
-           SET likes_count = MAX(likes_count - 1, 0)
-           WHERE video_id = ?`,
+          `UPDATE videos SET likes_count = MAX(likes_count - 1, 0) WHERE id = ?`,
           [videoId]
         );
+
         await saveUserInterest(db, userId, videoId, "unlike");
         await db.run("COMMIT");
         return res.status(200).json({ message: "Video unliked successfully" });
       }
     } catch (error) {
       await db.run("ROLLBACK");
-      if (error.code === "SQLITE_CONSTRAINT_FOREIGNKEY") {
-        return res.status(404).json({ error: "Video not found" });
+      if (error.message === "VIDEO_NOT_FOUND" || isForeignKeyError(error)) {
+        return res.status(404).json({ error: "Video or User not found" });
       }
       throw error;
     }
@@ -109,27 +120,32 @@ const addComment = async (req, res) => {
     await db.run("BEGIN TRANSACTION");
 
     try {
+      // 1. Insert comment record
       await db.run(
         `INSERT INTO video_comments (id, video_id, user_id, comment)
          VALUES (?, ?, ?, ?)`,
         [commentId, videoId, userId, cleanComment]
       );
 
-      await db.run(
-        `INSERT INTO video_activity (video_id, comments_count)
-         VALUES (?, 1)
-         ON CONFLICT(video_id) DO UPDATE SET comments_count = comments_count + 1`,
+      // 2. Increment comments_count on videos table
+      const updateResult = await db.run(
+        `UPDATE videos SET comments_count = comments_count + 1 WHERE id = ?`,
         [videoId]
       );
 
+      if (updateResult.changes === 0) {
+        throw new Error("VIDEO_NOT_FOUND");
+      }
+
+      // 3. Log activity
       await saveUserInterest(db, userId, videoId, "comment");
 
       await db.run("COMMIT");
       return res.status(201).json({ message: "Comment added successfully", commentId });
     } catch (error) {
       await db.run("ROLLBACK");
-      if (error.code === "SQLITE_CONSTRAINT_FOREIGNKEY") {
-        return res.status(404).json({ error: "Video not found" });
+      if (error.message === "VIDEO_NOT_FOUND" || isForeignKeyError(error)) {
+        return res.status(404).json({ error: "Video or User not found" });
       }
       throw error;
     }
@@ -167,24 +183,28 @@ const deleteComment = async (req, res) => {
         });
       }
 
+      // 1. Delete comment
       await db.run(
         `DELETE FROM video_comments WHERE id = ? AND user_id = ?`,
         [commentId, userId]
       );
 
+      // 2. Decrement comments_count on videos table
       await db.run(
-        `UPDATE video_activity
-         SET comments_count = MAX(comments_count - 1, 0)
-         WHERE video_id = ?`,
+        `UPDATE videos SET comments_count = MAX(comments_count - 1, 0) WHERE id = ?`,
         [comment.video_id]
       );
 
+      // 3. Log activity
       await saveUserInterest(db, userId, comment.video_id, "comment_delete");
 
       await db.run("COMMIT");
       return res.status(200).json({ message: "Comment deleted successfully" });
     } catch (error) {
       await db.run("ROLLBACK");
+      if (isForeignKeyError(error)) {
+        return res.status(404).json({ error: "Related resource not found" });
+      }
       throw error;
     }
   } catch (error) {
@@ -194,7 +214,7 @@ const deleteComment = async (req, res) => {
 };
 
 // ======================================================
-// RECORD VIDEO VIEW (Safe – duplicate returns 200)
+// RECORD VIDEO VIEW
 // ======================================================
 const viewVideo = async (req, res) => {
   try {
@@ -209,20 +229,23 @@ const viewVideo = async (req, res) => {
     await db.run("BEGIN TRANSACTION");
 
     try {
-      // Attempt to insert a new view – ignore if already exists
+      // 1. Record view in video_views table
       const result = await db.run(
         `INSERT OR IGNORE INTO video_views (video_id, user_id) VALUES (?, ?)`,
         [videoId, userId]
       );
 
       if (result.changes === 1) {
-        // New view – increment the counter and log interest
-        await db.run(
-          `INSERT INTO video_activity (video_id, views_count)
-           VALUES (?, 1)
-           ON CONFLICT(video_id) DO UPDATE SET views_count = views_count + 1`,
+        // 2. Increment views_count on videos table
+        const updateResult = await db.run(
+          `UPDATE videos SET views_count = views_count + 1 WHERE id = ?`,
           [videoId]
         );
+
+        if (updateResult.changes === 0) {
+          throw new Error("VIDEO_NOT_FOUND");
+        }
+
         await saveUserInterest(db, userId, videoId, "view");
         await db.run("COMMIT");
         return res.status(200).json({
@@ -230,7 +253,6 @@ const viewVideo = async (req, res) => {
           counted: true,
         });
       } else {
-        // Already viewed – no changes needed
         await db.run("COMMIT");
         return res.status(200).json({
           message: "View already recorded",
@@ -239,11 +261,9 @@ const viewVideo = async (req, res) => {
       }
     } catch (error) {
       await db.run("ROLLBACK");
-      // Foreign key constraint – video does not exist
-      if (error.code === "SQLITE_CONSTRAINT_FOREIGNKEY") {
-        return res.status(404).json({ error: "Video not found" });
+      if (error.message === "VIDEO_NOT_FOUND" || isForeignKeyError(error)) {
+        return res.status(404).json({ error: "Video or User not found" });
       }
-      // Unexpected DB error
       throw error;
     }
   } catch (error) {
@@ -268,7 +288,6 @@ const subscribeUser = async (req, res) => {
 
     const targetUserId = Number(creatorId);
 
-    // Prevent subscribing to yourself
     if (subscriberId === targetUserId) {
       return res.status(400).json({
         error: "You cannot subscribe to yourself",
@@ -276,11 +295,9 @@ const subscribeUser = async (req, res) => {
     }
 
     const db = await connectDB();
-
     await db.run("BEGIN TRANSACTION");
 
     try {
-      // Make sure creator exists
       const creator = await db.get(
         `SELECT id FROM users WHERE id = ?`,
         [targetUserId]
@@ -288,80 +305,67 @@ const subscribeUser = async (req, res) => {
 
       if (!creator) {
         await db.run("ROLLBACK");
-
         return res.status(404).json({
           error: "User not found",
         });
       }
 
-      // Try to subscribe
       const result = await db.run(
-        `INSERT OR IGNORE INTO user_subscriptions
-         (subscriber_id, subscribed_to_id)
-         VALUES (?, ?)`,
+        `INSERT OR IGNORE INTO user_subscriptions (subscriber_id, subscribed_to_id) VALUES (?, ?)`,
         [subscriberId, targetUserId]
       );
 
       if (result.changes === 1) {
-        // New subscription
-        await db.run(
-          `UPDATE users
-           SET sub_count = sub_count + 1
-           WHERE id = ?`,
+        const updateResult = await db.run(
+          `UPDATE users SET sub_count = sub_count + 1 WHERE id = ?`,
           [targetUserId]
         );
 
-        await db.run("COMMIT");
+        if (updateResult.changes === 0) {
+          throw new Error("USER_NOT_FOUND");
+        }
 
+        await db.run("COMMIT");
         return res.status(201).json({
           message: "Subscribed successfully",
           subscribed: true,
         });
       }
 
-      // Already subscribed → unsubscribe
       const deleteResult = await db.run(
-        `DELETE FROM user_subscriptions
-         WHERE subscriber_id = ?
-           AND subscribed_to_id = ?`,
+        `DELETE FROM user_subscriptions WHERE subscriber_id = ? AND subscribed_to_id = ?`,
         [subscriberId, targetUserId]
       );
 
       if (deleteResult.changes === 1) {
         await db.run(
-          `UPDATE users
-           SET sub_count = MAX(sub_count - 1, 0)
-           WHERE id = ?`,
+          `UPDATE users SET sub_count = MAX(sub_count - 1, 0) WHERE id = ?`,
           [targetUserId]
         );
       }
 
       await db.run("COMMIT");
-
       return res.status(200).json({
         message: "Unsubscribed successfully",
         subscribed: false,
       });
-
     } catch (error) {
       await db.run("ROLLBACK");
+      if (error.message === "USER_NOT_FOUND" || isForeignKeyError(error)) {
+        return res.status(404).json({ error: "User not found" });
+      }
       throw error;
     }
-
   } catch (error) {
-    logger.error(
-      `Unexpected error toggling subscription: ${error.message}`
-    );
-
+    logger.error(`Unexpected error toggling subscription: ${error.message}`);
     return res.status(500).json({
       error: "Internal server error",
     });
   }
 };
 
-
 module.exports = {
-  likeVideo,  
+  likeVideo,
   addComment,
   deleteComment,
   viewVideo,

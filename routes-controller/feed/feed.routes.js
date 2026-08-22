@@ -9,7 +9,7 @@ const router = express.Router();
  *   get:
  *     summary: Get video feed
  *     description: |
- *       Returns a paginated list of public videos.
+ *       Returns a paginated list of public videos along with publisher/channel information.
  *       The feed supports cursor-based pagination.
  *       Videos may be ordered chronologically or by trending score.
  *     tags:
@@ -51,7 +51,7 @@ const router = express.Router();
  *               properties:
  *                 videos:
  *                   type: array
- *                   description: List of videos in the feed.
+ *                   description: List of videos in the feed with publisher details.
  *                   items:
  *                     type: object
  *                     properties:
@@ -59,35 +59,75 @@ const router = express.Router();
  *                         type: string
  *                         example: 8839720d-ec43-4be6-bf04-4784050367e5
  *                       user_id:
- *                         type: string
+ *                         type: integer
+ *                         example: 10
  *                       title:
  *                         type: string
+ *                         example: "Building a High-Performance Feed Infrastructure"
  *                       description:
  *                         type: string
+ *                         nullable: true
+ *                         example: "Deep dive into relational schema design and cursor-based pagination."
  *                       video_path:
  *                         type: string
+ *                         example: "/storage/videos/8839720d.mp4"
  *                       thumbnail_path:
  *                         type: string
+ *                         nullable: true
+ *                         example: "/storage/thumbnails/8839720d.jpg"
  *                       mime_type:
  *                         type: string
  *                         example: video/mp4
  *                       file_size:
  *                         type: integer
+ *                         example: 15420000
  *                       duration:
  *                         type: number
  *                         nullable: true
+ *                         example: 184.5
  *                       width:
  *                         type: integer
  *                         nullable: true
+ *                         example: 1920
  *                       height:
  *                         type: integer
  *                         nullable: true
- *                       views:
+ *                         example: 1080
+ *                       views_count:
  *                         type: integer
+ *                         example: 1540
  *                       likes_count:
  *                         type: integer
+ *                         example: 210
+ *                       comments_count:
+ *                         type: integer
+ *                         example: 45
  *                       created_at:
  *                         type: string
+ *                         example: "2026-08-21T15:00:00.000Z"
+ *                       channel:
+ *                         type: object
+ *                         description: Publisher/channel information for the video card.
+ *                         properties:
+ *                           id:
+ *                             type: integer
+ *                             example: 10
+ *                           username:
+ *                             type: string
+ *                             example: "hridoy"
+ *                           display_name:
+ *                             type: string
+ *                             example: "Hridoy Hosen"
+ *                           avatar_path:
+ *                             type: string
+ *                             nullable: true
+ *                             example: "/avatars/hridoy.png"
+ *                           is_verified:
+ *                             type: boolean
+ *                             example: true
+ *                           sub_count:
+ *                             type: integer
+ *                             example: 1250
  *
  *                 nextCursor:
  *                   type: string

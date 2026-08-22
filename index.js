@@ -52,8 +52,10 @@ app.get('/', (req, res) => {
 // User registration route
 const {login, register} = require('./routes-controller/manage-account/login-register');
 const getUser = require("./routes-controller/user/user.routes");
+const editUser = require("./routes-controller/user/user.edit");
 
 app.use("/user", getUser);
+app.use("/user/edit", editUser);
 app.post('/user/register', register);
 app.post('/user/login', login);
 
@@ -72,8 +74,10 @@ app.use('/video/delete', videoDeleteRouter);
 //            Video Activity
 //....................................
 const activityRoutes = require("./routes-controller/video-activity/activity.routes");
+const getComments = require("./routes-controller/comments/commentRoutes");
 
 app.use("/video/activity", activityRoutes);
+app.use("/video/comments", getComments);
 
 // ....................................
 //            Video Watch

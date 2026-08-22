@@ -1,5 +1,6 @@
 const express = require("express");
 const Router = express.Router();
+const connectDB = require("../../database/db");
 
 const requireAuth = require("../../middleware/requireAuth");
 
@@ -326,5 +327,137 @@ Router.post("/view", requireAuth, viewVideo);
  */
 Router.post("/subscribe", requireAuth, subscribeUser);
 
+
+/**
+ * @swagger
+ * /video/activity/status:
+ *   get:
+ *     summary: Get video activity status
+ *     description: Returns whether the authenticated user has liked the video, subscribed to its channel, or owns the channel. Unauthenticated users receive false for all status fields.
+ *     tags:
+ *       - Video Activity
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: videoId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: ID of the video
+ *         example: 624b6d2f-eb93-4322-bc97-c55240a39e49
+ *     responses:
+ *       200:
+ *         description: Video activity status retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 isLiked:
+ *                   type: boolean
+ *                   description: Whether the current user liked the video
+ *                   example: true
+ *                 isSubscribed:
+ *                   type: boolean
+ *                   description: Whether the current user is subscribed to the video owner's channel
+ *                   example: false
+ *                 isOwnChannel:
+ *                   type: boolean
+ *                   description: Whether the current user owns the video channel
+ *                   example: false
+ *       400:
+ *         description: Missing videoId query parameter
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: Missing videoId query parameter
+ *       404:
+ *         description: Video not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: Video not found
+ *       500:
+ *         description: Internal server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: Internal server error
+ */
+// ✅ Added requireAuth and fixed column name 'subscribed_to_id' (was 'channel_id')
+Router.get("/status", requireAuth, async (req, res) => {
+  try {
+    const { videoId } = req.query;
+    const userId = req.user?.id;
+
+    if (!videoId) {
+      return res.status(400).json({ error: "Missing videoId query parameter" });
+    }
+
+    const db = await connectDB();
+
+    // 1. Fetch video metadata
+    const videoRow = await db.get(
+      "SELECT user_id FROM videos WHERE id = ?",
+      [videoId]
+    );
+
+    if (!videoRow) {
+      return res.status(404).json({ error: "Video not found" });
+    }
+
+    const channelOwnerId = videoRow.user_id;
+
+    // If no authenticated user (should not happen with requireAuth, but keep safety)
+    if (!userId) {
+      return res.json({
+        isLiked: false,
+        isSubscribed: false,
+        isOwnChannel: false,
+      });
+    }
+
+    const isOwnChannel = String(userId) === String(channelOwnerId);
+
+    // 2. Query video_likes with parameter order matching (video_id, user_id)
+    const likeRow = await db.get(
+      "SELECT 1 FROM video_likes WHERE video_id = ? AND user_id = ? LIMIT 1",
+      [videoId, userId]
+    );
+    const isLiked = Boolean(likeRow);
+
+    // 3. Query user_subscriptions (subscriber_id, subscribed_to_id) – column fixed!
+    let isSubscribed = false;
+    if (!isOwnChannel) {
+      const subRow = await db.get(
+        "SELECT 1 FROM user_subscriptions WHERE subscriber_id = ? AND subscribed_to_id = ? LIMIT 1",
+        [userId, channelOwnerId]
+      );
+      isSubscribed = Boolean(subRow);
+    }
+
+    return res.json({
+      isLiked,
+      isSubscribed,
+      isOwnChannel,
+    });
+  } catch (error) {
+    console.error("Error fetching video status:", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
 
 module.exports = Router;
